@@ -28,6 +28,9 @@
 
 import './index.css';
 
+// Test IPC bridge
+console.log('🔍 Testing window.api:', window.api);
+
 console.log(
   '👋 This message is being logged by "renderer.ts", included via Vite',
 );
