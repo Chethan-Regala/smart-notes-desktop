@@ -36,9 +36,12 @@ let activeWorkspace: string | null = null;
 function isPathInsideWorkspace(filePath: string, workspacePath: string): boolean {
   const resolvedWorkspace = path.resolve(workspacePath);
   const resolvedFile = path.resolve(filePath);
-  const relativePath = path.relative(resolvedWorkspace, resolvedFile);
+  const workspaceWithSep = `${resolvedWorkspace}${path.sep}`;
+  const workspaceForCompare =
+    process.platform === 'win32' ? workspaceWithSep.toLowerCase() : workspaceWithSep;
+  const fileForCompare = process.platform === 'win32' ? resolvedFile.toLowerCase() : resolvedFile;
 
-  return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+  return fileForCompare.startsWith(workspaceForCompare);
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.

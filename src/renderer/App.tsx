@@ -44,9 +44,17 @@ function App() {
   };
 
   const handleSelectNote = async (filePath: string) => {
+    console.log('Clicked:', filePath);
     setSelectedNote(filePath);
-    const noteContent = await window.api.readNote(filePath);
-    setContent(noteContent ?? '');
+
+    try {
+      const noteContent = await window.api.readNote(filePath);
+      console.log('Loaded content:', noteContent);
+      setContent(noteContent ?? '');
+    } catch (error) {
+      console.error('Failed to read note:', error);
+      setContent('');
+    }
   };
 
   return (
