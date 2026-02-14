@@ -1,18 +1,37 @@
 import fs from 'fs';
 import path from 'path';
-import { NoteFile } from '../../shared/types';
+import type { FileNode } from '../../shared/types';
 
-export function getMarkdownFiles(workspacePath: string): NoteFile[] {
+export function buildWorkspaceTree(workspacePath: string): FileNode[] {
   if (!workspacePath || !fs.existsSync(workspacePath)) return [];
 
-  const files = fs.readdirSync(workspacePath);
+  const entries = fs.readdirSync(workspacePath, { withFileTypes: true });
 
-  return files
-    .filter(file => file.endsWith('.md'))
-    .map(file => ({
-      name: file,
-      path: path.join(workspacePath, file),
-    }));
+  return entries
+    .filter(entry => !entry.name.startsWith('.'))
+    .map(entry => {
+      const fullPath = path.join(workspacePath, entry.name);
+
+      if (entry.isDirectory()) {
+        return {
+          name: entry.name,
+          path: fullPath,
+          type: 'folder',
+          children: buildWorkspaceTree(fullPath),
+        };
+      }
+
+      if (entry.isFile() && entry.name.endsWith('.md')) {
+        return {
+          name: entry.name,
+          path: fullPath,
+          type: 'file',
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean) as FileNode[];
 }
 
 export function readMarkdownFile(filePath: string): string {

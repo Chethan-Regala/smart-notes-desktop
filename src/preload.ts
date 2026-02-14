@@ -5,7 +5,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('api', {
   selectWorkspace: () => ipcRenderer.invoke('select-workspace'),
   getWorkspace: () => ipcRenderer.invoke('get-workspace'),
-  getNotes: (workspacePath: string) => ipcRenderer.invoke('get-notes', workspacePath),
+  getWorkspaceTree: (workspacePath: string) =>
+    ipcRenderer.invoke('get-workspace-tree', workspacePath),
   readNote: (filePath: string) => ipcRenderer.invoke('read-note', filePath),
   onWorkspaceUpdated: (callback: () => void) => {
     const listener = () => callback();

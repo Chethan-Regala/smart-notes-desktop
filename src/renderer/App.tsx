@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import type { NoteFile } from '../shared/types';
+import type { FileNode } from '../shared/types';
+import TreeNode from './components/TreeNode';
 
 function App() {
   const [workspace, setWorkspace] = useState<string | null>(null);
-  const [notes, setNotes] = useState<NoteFile[]>([]);
+  const [tree, setTree] = useState<FileNode[]>([]);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
   const [content, setContent] = useState<string>('');
 
@@ -21,14 +22,14 @@ function App() {
   useEffect(() => {
     if (!workspace) return;
 
-    const refreshNotes = async () => {
-      const files = await window.api.getNotes(workspace);
-      setNotes(files);
+    const refreshTree = async () => {
+      const data = await window.api.getWorkspaceTree(workspace);
+      setTree(data);
     };
 
-    void refreshNotes();
+    void refreshTree();
     const unsubscribe = window.api.onWorkspaceUpdated(() => {
-      void refreshNotes();
+      void refreshTree();
     });
 
     return () => {
@@ -67,20 +68,13 @@ function App() {
           {workspace ?? 'No workspace selected'}
         </p>
         <div>
-          {notes.map(note => (
-            <div
-              key={note.path}
-              onClick={() => handleSelectNote(note.path)}
-              style={{
-                cursor: 'pointer',
-                padding: '8px',
-                backgroundColor: selectedNote === note.path ? '#e0e0e0' : 'transparent',
-                borderRadius: '4px',
-                marginBottom: '4px',
-              }}
-            >
-              {note.name}
-            </div>
+          {tree.map(node => (
+            <TreeNode
+              key={node.path}
+              node={node}
+              onSelect={handleSelectNote}
+              selectedPath={selectedNote}
+            />
           ))}
         </div>
       </div>

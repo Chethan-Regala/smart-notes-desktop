@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
-import { getMarkdownFiles, readMarkdownFile } from '../modules/storage/notes';
+import { buildWorkspaceTree, readMarkdownFile } from '../modules/storage/notes';
 import { isValidWorkspace } from '../modules/storage/workspace';
 import { startWorkspaceWatcher, stopWorkspaceWatcher } from '../modules/storage/watcher';
 
@@ -93,8 +93,8 @@ ipcMain.handle('get-workspace', async () => {
   return null;
 });
 
-ipcMain.handle('get-notes', async (_, workspacePath: string) => {
-  return getMarkdownFiles(workspacePath);
+ipcMain.handle('get-workspace-tree', async (_, workspacePath: string) => {
+  return buildWorkspaceTree(workspacePath);
 });
 
 ipcMain.handle('read-note', async (_, filePath: string) => {
