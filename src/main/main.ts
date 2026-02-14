@@ -2,7 +2,12 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
-import { buildWorkspaceTree, readMarkdownFile } from '../modules/storage/notes';
+import {
+  buildWorkspaceTree,
+  readMarkdownFile,
+  searchWorkspace,
+  writeMarkdownFile,
+} from '../modules/storage/notes';
 import { isValidWorkspace } from '../modules/storage/workspace';
 import { startWorkspaceWatcher, stopWorkspaceWatcher } from '../modules/storage/watcher';
 
@@ -104,6 +109,22 @@ ipcMain.handle('read-note', async (_, filePath: string) => {
   }
 
   return readMarkdownFile(filePath);
+});
+
+ipcMain.handle('write-note', async (_, filePath: string, content: string) => {
+  if (!activeWorkspace) {
+    throw new Error('No workspace selected');
+  }
+
+  await writeMarkdownFile(activeWorkspace, filePath, content);
+});
+
+ipcMain.handle('search-notes', async (_, query: string) => {
+  if (!activeWorkspace) {
+    throw new Error('No workspace selected');
+  }
+
+  return searchWorkspace(activeWorkspace, query);
 });
 
 const createWindow = () => {

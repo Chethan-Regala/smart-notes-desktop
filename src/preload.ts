@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('api', {
   getWorkspaceTree: (workspacePath: string) =>
     ipcRenderer.invoke('get-workspace-tree', workspacePath),
   readNote: (filePath: string) => ipcRenderer.invoke('read-note', filePath),
+  writeNote: (filePath: string, content: string) =>
+    ipcRenderer.invoke('write-note', filePath, content),
+  searchNotes: (query: string) => ipcRenderer.invoke('search-notes', query),
   onWorkspaceUpdated: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on('workspace-updated', listener);

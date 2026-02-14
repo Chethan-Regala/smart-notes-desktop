@@ -4,3 +4,8 @@ export type FileNode = {
   type: 'file' | 'folder';
   children?: FileNode[];
 };
+
+export type NoteSearchResult = {
+  name: string;
+  path: string;
+};

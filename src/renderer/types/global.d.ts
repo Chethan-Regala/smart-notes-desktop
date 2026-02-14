@@ -1,6 +1,6 @@
 export {};
 
-import type { FileNode } from '../../shared/types';
+import type { FileNode, NoteSearchResult } from '../../shared/types';
 
 declare global {
   interface Window {
@@ -9,6 +9,8 @@ declare global {
       getWorkspace: () => Promise<string | null>;
       getWorkspaceTree: (workspacePath: string) => Promise<FileNode[]>;
       readNote: (filePath: string) => Promise<string | null>;
+      writeNote: (filePath: string, content: string) => Promise<void>;
+      searchNotes: (query: string) => Promise<NoteSearchResult[]>;
       onWorkspaceUpdated: (callback: () => void) => () => void;
     };
   }
