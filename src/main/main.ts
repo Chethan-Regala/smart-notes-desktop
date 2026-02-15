@@ -4,6 +4,11 @@ import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 import {
   buildWorkspaceTree,
+  createFolder,
+  createMarkdownFile,
+  deleteFolder,
+  deleteMarkdownFile,
+  renameMarkdownFile,
   readMarkdownFile,
   searchWorkspace,
   writeMarkdownFile,
@@ -68,7 +73,7 @@ ipcMain.handle('select-workspace', async () => {
 
   // Start watcher for this workspace
   if (mainWindow) {
-    startWorkspaceWatcher(selectedPath, () => {
+    await startWorkspaceWatcher(selectedPath, () => {
       // Notify renderer of workspace changes
       mainWindow?.webContents.send('workspace-updated');
     });
@@ -85,7 +90,7 @@ ipcMain.handle('get-workspace', async () => {
 
     // Start watcher for saved workspace
     if (mainWindow && savedWorkspace) {
-      startWorkspaceWatcher(savedWorkspace, () => {
+      await startWorkspaceWatcher(savedWorkspace, () => {
         // Notify renderer of workspace changes
         mainWindow?.webContents.send('workspace-updated');
       });
@@ -127,6 +132,46 @@ ipcMain.handle('search-notes', async (_, query: string) => {
   return searchWorkspace(activeWorkspace, query);
 });
 
+ipcMain.handle('create-note', async (_, fileName: string, parentFolder?: string) => {
+  if (!activeWorkspace) {
+    throw new Error('No workspace selected');
+  }
+
+  return createMarkdownFile(activeWorkspace, fileName, parentFolder);
+});
+
+ipcMain.handle('rename-note', async (_, oldPath: string, newName: string) => {
+  if (!activeWorkspace) {
+    throw new Error('No workspace selected');
+  }
+
+  return renameMarkdownFile(activeWorkspace, oldPath, newName);
+});
+
+ipcMain.handle('delete-note', async (_, filePath: string) => {
+  if (!activeWorkspace) {
+    throw new Error('No workspace selected');
+  }
+
+  await deleteMarkdownFile(activeWorkspace, filePath);
+});
+
+ipcMain.handle('create-folder', async (_, folderName: string, parentFolder?: string) => {
+  if (!activeWorkspace) {
+    throw new Error('No workspace selected');
+  }
+
+  return createFolder(activeWorkspace, folderName, parentFolder);
+});
+
+ipcMain.handle('delete-folder', async (_, folderPath: string) => {
+  if (!activeWorkspace) {
+    throw new Error('No workspace selected');
+  }
+
+  await deleteFolder(activeWorkspace, folderPath);
+});
+
 const createWindow = () => {
   // Create the browser window.
   const win = new BrowserWindow({
@@ -156,7 +201,7 @@ const createWindow = () => {
 
   // Clean up watcher when window is closed
   mainWindow.on('closed', () => {
-    stopWorkspaceWatcher();
+    void stopWorkspaceWatcher();
     mainWindow = null;
   });
 };

@@ -11,6 +11,14 @@ contextBridge.exposeInMainWorld('api', {
   writeNote: (filePath: string, content: string) =>
     ipcRenderer.invoke('write-note', filePath, content),
   searchNotes: (query: string) => ipcRenderer.invoke('search-notes', query),
+  createNote: (fileName: string, parentFolder?: string) =>
+    ipcRenderer.invoke('create-note', fileName, parentFolder),
+  renameNote: (oldPath: string, newName: string) =>
+    ipcRenderer.invoke('rename-note', oldPath, newName),
+  deleteNote: (filePath: string) => ipcRenderer.invoke('delete-note', filePath),
+  createFolder: (folderName: string, parentFolder?: string) =>
+    ipcRenderer.invoke('create-folder', folderName, parentFolder),
+  deleteFolder: (folderPath: string) => ipcRenderer.invoke('delete-folder', folderPath),
   onWorkspaceUpdated: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on('workspace-updated', listener);
