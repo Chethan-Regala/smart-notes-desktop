@@ -2,10 +2,20 @@ import { watch, FSWatcher } from 'chokidar';
 import fs from 'fs';
 
 let watcher: FSWatcher | null = null;
+let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 
 async function closeWatcher(): Promise<void> {
   if (!watcher) {
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout);
+      refreshTimeout = null;
+    }
     return;
+  }
+
+  if (refreshTimeout) {
+    clearTimeout(refreshTimeout);
+    refreshTimeout = null;
   }
 
   const currentWatcher = watcher;
@@ -46,7 +56,14 @@ export async function startWorkspaceWatcher(
   });
 
   watcher.on('all', () => {
-    onChange();
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout);
+    }
+
+    refreshTimeout = setTimeout(() => {
+      onChange();
+      refreshTimeout = null;
+    }, 200);
   });
 
   watcher.on('error', (error: Error) => {

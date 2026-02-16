@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FileNode, NoteSearchResult } from '../shared/types';
 import TreeNode from './components/TreeNode';
 import { renderMarkdown } from './utils/markdown';
+import { error, log } from './utils/logger';
 
 function treeContainsPath(nodes: FileNode[], targetPath: string, nodeType?: 'file' | 'folder'): boolean {
   for (const node of nodes) {
@@ -17,6 +18,97 @@ function treeContainsPath(nodes: FileNode[], targetPath: string, nodeType?: 'fil
   return false;
 }
 
+function getParentPath(inputPath: string): string | null {
+  const lastForwardSlash = inputPath.lastIndexOf('/');
+  const lastBackwardSlash = inputPath.lastIndexOf('\\');
+  const lastSlash = Math.max(lastForwardSlash, lastBackwardSlash);
+
+  if (lastSlash === -1) {
+    return null;
+  }
+
+  return inputPath.substring(0, lastSlash);
+}
+
+function formatFolderBreadcrumb(workspacePath: string, folderPath: string): string {
+  const normalizePath = (value: string) => value.replace(/[\\/]+/g, '\\');
+  const normalizedWorkspace = normalizePath(workspacePath);
+  const normalizedFolder = normalizePath(folderPath);
+
+  if (normalizedFolder === normalizedWorkspace) {
+    return '';
+  }
+
+  const workspacePrefix = `${normalizedWorkspace}\\`;
+  const relativePath = normalizedFolder.startsWith(workspacePrefix)
+    ? normalizedFolder.substring(workspacePrefix.length)
+    : normalizedFolder;
+
+  return relativePath
+    .split('\\')
+    .filter(Boolean)
+    .join(' > ');
+}
+
+type EditorContentProps = {
+  hasWorkspace: boolean;
+  selectedNote: string | null;
+  isEditing: boolean;
+  content: string;
+  draftContent: string;
+  onDraftChange: (nextValue: string) => void;
+};
+
+const EditorContent = React.memo(function EditorContent({
+  hasWorkspace,
+  selectedNote,
+  isEditing,
+  content,
+  draftContent,
+  onDraftChange,
+}: EditorContentProps) {
+  if (!hasWorkspace) {
+    return (
+      <div className="empty-state">
+        <p>Select a workspace to begin.</p>
+      </div>
+    );
+  }
+
+  if (isEditing) {
+    return (
+      <textarea
+        value={draftContent}
+        onChange={event => {
+          onDraftChange(event.target.value);
+        }}
+        className="editor-textarea"
+      />
+    );
+  }
+
+  if (!selectedNote) {
+    return (
+      <div className="empty-state">
+        <p>Select a note to view or edit.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="markdown-content"
+      dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+    />
+  );
+}, (previous, next) =>
+  previous.hasWorkspace === next.hasWorkspace &&
+  previous.selectedNote === next.selectedNote &&
+  previous.isEditing === next.isEditing &&
+  previous.content === next.content &&
+  previous.draftContent === next.draftContent &&
+  previous.onDraftChange === next.onDraftChange);
+
 function App() {
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [tree, setTree] = useState<FileNode[]>([]);
@@ -28,12 +120,75 @@ function App() {
   const [isDirty, setIsDirty] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<NoteSearchResult[] | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [showNewNoteInput, setShowNewNoteInput] = useState(false);
   const [newNoteName, setNewNoteName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [isLightMode, setIsLightMode] = useState(false);
+
+  const getActiveFolder = useCallback((): string | null => {
+    if (selectedFolder) {
+      return selectedFolder;
+    }
+
+    if (selectedNote) {
+      return getParentPath(selectedNote);
+    }
+
+    return null;
+  }, [selectedFolder, selectedNote]);
+
+  const highlightMatch = useCallback((text: string, query: string): React.ReactNode => {
+    if (!query) return text;
+
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const index = lowerText.indexOf(lowerQuery);
+
+    if (index === -1) return text;
+
+    const before = text.substring(0, index);
+    const match = text.substring(index, index + query.length);
+    const after = text.substring(index + query.length);
+
+    return (
+      <>
+        {before}
+        <span style={{ backgroundColor: '#ffd54f' }}>{match}</span>
+        {after}
+      </>
+    );
+  }, []);
+
+  const trimmedSearchQuery = useMemo(() => searchQuery.trim(), [searchQuery]);
+
+  useEffect(() => {
+    if (!trimmedSearchQuery) {
+      setSearchResults(null);
+      return;
+    }
+
+    if (trimmedSearchQuery.length < 2) {
+      setSearchResults(null);
+      return;
+    }
+
+    const handler = setTimeout(async () => {
+      try {
+        const results = await window.api.searchNotes(trimmedSearchQuery);
+        setSearchResults(results);
+      } catch (searchError) {
+        error('Failed to search notes:', searchError);
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [trimmedSearchQuery]);
 
   useEffect(() => {
     const loadWorkspace = async () => {
@@ -81,7 +236,7 @@ function App() {
     }
   }, [tree, selectedFolder, selectedNote, workspace]);
 
-  const handleSelectWorkspace = async () => {
+  const handleSelectWorkspace = useCallback(async () => {
     const path = await window.api.selectWorkspace();
     if (path) {
       setWorkspace(path);
@@ -98,33 +253,42 @@ function App() {
       setIsRenaming(false);
       setRenameValue('');
     }
-  };
+  }, []);
 
-  const handleSelectNote = async (filePath: string) => {
-    console.log('Clicked:', filePath);
+  const handleSelectNote = useCallback(async (filePath: string) => {
+    log('Clicked:', filePath);
+    const parentFolder = getParentPath(filePath);
+
+    if (parentFolder) {
+      setExpandedFolders(prev => {
+        const next = new Set(prev);
+        next.add(parentFolder);
+        return next;
+      });
+    }
 
     try {
       const noteContent = await window.api.readNote(filePath);
-      console.log('Loaded content:', noteContent);
+      log('Loaded content:', noteContent);
       const resolvedContent = noteContent ?? '';
       setSelectedNote(filePath);
-      setSelectedFolder(filePath.replace(/[\\/][^\\/]+$/, ''));
+      setSelectedFolder(parentFolder);
       setContent(resolvedContent);
       setDraftContent(resolvedContent);
       setIsDirty(false);
       setIsEditing(false);
-    } catch (error) {
-      console.error('Failed to read note:', error);
+    } catch (readError) {
+      error('Failed to read note:', readError);
       setSelectedNote(filePath);
-      setSelectedFolder(filePath.replace(/[\\/][^\\/]+$/, ''));
+      setSelectedFolder(parentFolder);
       setContent('');
       setDraftContent('');
       setIsDirty(false);
       setIsEditing(false);
     }
-  };
+  }, []);
 
-  const handleSelectFolder = (folderPath: string) => {
+  const handleSelectFolder = useCallback((folderPath: string) => {
     setSelectedFolder(folderPath);
     setSelectedNote(null);
     setContent('');
@@ -133,7 +297,19 @@ function App() {
     setIsDirty(false);
     setIsRenaming(false);
     setRenameValue('');
-  };
+  }, []);
+
+  const handleToggleFolder = useCallback((folderPath: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) {
+        next.delete(folderPath);
+      } else {
+        next.add(folderPath);
+      }
+      return next;
+    });
+  }, []);
 
   const handleEditToggle = () => {
     if (!selectedNote) return;
@@ -150,7 +326,7 @@ function App() {
     setIsEditing(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!selectedNote || !isEditing || !isDirty) return;
 
     try {
@@ -158,30 +334,15 @@ function App() {
       setContent(draftContent);
       setIsDirty(false);
       setIsEditing(false);
-    } catch (error) {
-      console.error('Failed to save note:', error);
+    } catch (saveError) {
+      error('Failed to save note:', saveError);
     }
-  };
+  }, [draftContent, isDirty, isEditing, selectedNote]);
 
-  const handleSearchChange = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ): Promise<void> => {
-    const value = event.target.value;
-    setSearchQuery(value);
-
-    if (!value.trim()) {
-      setSearchResults(null);
-      return;
-    }
-
-    try {
-      const results = await window.api.searchNotes(value);
-      setSearchResults(results);
-    } catch (error) {
-      console.error('Failed to search notes:', error);
-      setSearchResults([]);
-    }
-  };
+  const handleDraftChange = useCallback((nextValue: string) => {
+    setDraftContent(nextValue);
+    setIsDirty(nextValue !== content);
+  }, [content]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -193,35 +354,83 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [draftContent, selectedNote, isEditing, isDirty]);
+  }, [handleSave]);
+
+  const activeFolder = useMemo(() => getActiveFolder(), [getActiveFolder]);
+  const breadcrumbPath =
+    workspace && activeFolder ? formatFolderBreadcrumb(workspace, activeFolder) : '';
+
+  const renderedSearchResults = useMemo(
+    () => searchResults?.map(note => (
+      <div
+        key={note.path}
+        onClick={() => void handleSelectNote(note.path)}
+        className={`note-item${selectedNote === note.path ? ' active' : ''}`}
+      >
+        {highlightMatch(note.name, trimmedSearchQuery)}
+      </div>
+    )),
+    [handleSelectNote, highlightMatch, searchResults, selectedNote, trimmedSearchQuery],
+  );
+
+  const renderedTree = useMemo(
+    () => tree.map(node => (
+      <TreeNode
+        key={node.path}
+        node={node}
+        onSelect={handleSelectNote}
+        onSelectFolder={handleSelectFolder}
+        onToggleFolder={handleToggleFolder}
+        expandedFolders={expandedFolders}
+        selectedPath={selectedNote}
+        selectedFolderPath={selectedFolder}
+        depth={0}
+      />
+    )),
+    [
+      expandedFolders,
+      handleSelectFolder,
+      handleSelectNote,
+      handleToggleFolder,
+      selectedFolder,
+      selectedNote,
+      tree,
+    ],
+  );
 
   return (
-    <main style={{ display: 'flex', height: '100vh' }}>
-      <div style={{ width: '250px', borderRight: '1px solid #ccc', padding: '10px', overflowY: 'auto' }}>
-        <button onClick={handleSelectWorkspace} style={{ width: '100%', marginBottom: '10px' }}>
+    <main className={`app-container${isLightMode ? ' light-mode' : ''}`}>
+      <div className="sidebar">
+        <button onClick={handleSelectWorkspace} className="button-block mb-sm">
           Select Workspace
         </button>
         <button
           onClick={() => setShowNewNoteInput(true)}
-          style={{ width: '100%', marginBottom: '10px' }}
+          className="button-block mb-sm"
           disabled={!workspace}
         >
           + New Note
         </button>
         <button
           onClick={() => setShowNewFolderInput(true)}
-          style={{ width: '100%', marginBottom: '10px' }}
+          className="button-block mb-sm"
           disabled={!workspace}
         >
           + New Folder
         </button>
+        <button
+          onClick={() => setIsLightMode(prev => !prev)}
+          className="button-block mb-sm"
+        >
+          {isLightMode ? 'Switch to Dark' : 'Switch to Light'}
+        </button>
         {showNewFolderInput && (
-          <div style={{ marginBottom: '8px', display: 'flex', gap: '6px' }}>
+          <div className="inline-row mb-xs">
             <input
               value={newFolderName}
               onChange={event => setNewFolderName(event.target.value)}
               placeholder="Enter folder name"
-              style={{ flex: 1, boxSizing: 'border-box' }}
+              className="text-input flex-1"
             />
             <button
               onClick={async () => {
@@ -229,12 +438,19 @@ function App() {
                 if (!workspace) return;
 
                 try {
-                  const targetFolder = selectedFolder ?? workspace;
-                  await window.api.createFolder(newFolderName.trim(), targetFolder);
+                  const targetFolder = getActiveFolder();
+                  await window.api.createFolder(newFolderName.trim(), targetFolder ?? undefined);
+                  if (targetFolder) {
+                    setExpandedFolders(prev => {
+                      const next = new Set(prev);
+                      next.add(targetFolder);
+                      return next;
+                    });
+                  }
                   setShowNewFolderInput(false);
                   setNewFolderName('');
-                } catch (error) {
-                  console.error(error);
+                } catch (createFolderError) {
+                  error(createFolderError);
                 }
               }}
             >
@@ -251,13 +467,13 @@ function App() {
           </div>
         )}
         {showNewNoteInput && (
-          <div style={{ marginBottom: '8px', display: 'flex', gap: '6px' }}>
+          <div className="inline-row mb-xs">
             <input
               type="text"
               placeholder="Enter note name"
               value={newNoteName}
               onChange={event => setNewNoteName(event.target.value)}
-              style={{ flex: 1, boxSizing: 'border-box' }}
+              className="text-input flex-1"
             />
             <button
               onClick={async () => {
@@ -265,16 +481,23 @@ function App() {
                 if (!workspace) return;
 
                 try {
-                  const targetFolder = selectedFolder ?? workspace;
-                  const newPath = await window.api.createNote(newNoteName.trim(), targetFolder);
+                  const targetFolder = getActiveFolder();
+                  const newPath = await window.api.createNote(newNoteName.trim(), targetFolder ?? undefined);
+                  if (targetFolder) {
+                    setExpandedFolders(prev => {
+                      const next = new Set(prev);
+                      next.add(targetFolder);
+                      return next;
+                    });
+                  }
                   setShowNewNoteInput(false);
                   setNewNoteName('');
                   await handleSelectNote(newPath);
                   setIsEditing(true);
                   setDraftContent('');
                   setIsDirty(false);
-                } catch (error) {
-                  console.error(error);
+                } catch (createNoteError) {
+                  error(createNoteError);
                 }
               }}
             >
@@ -290,25 +513,20 @@ function App() {
             </button>
           </div>
         )}
-        <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+        <p className="workspace-label">
           {workspace ?? 'No workspace selected'}
         </p>
-        <div style={{ fontSize: '12px', color: '#444', marginBottom: '8px' }}>
-          Current Folder:{' '}
-          <strong>
-            {workspace
-              ? selectedFolder
-                ? selectedFolder === workspace
-                  ? 'Workspace Root'
-                  : selectedFolder
-                      .replace(`${workspace}\\`, '')
-                      .replace(`${workspace}/`, '')
-                : 'Workspace Root'
-              : 'Workspace Root'}
-          </strong>
+        <div className="breadcrumb">
+          Workspace
+          {workspace && activeFolder && breadcrumbPath && (
+            <>
+              {' > '}
+              {breadcrumbPath}
+            </>
+          )}
         </div>
         <button
-          style={{ width: '100%', marginBottom: '10px' }}
+          className="button-block mb-sm"
           disabled={!workspace || !selectedFolder || selectedFolder === workspace}
           onClick={async () => {
             if (!workspace || !selectedFolder || selectedFolder === workspace) {
@@ -345,8 +563,8 @@ function App() {
               }
 
               setSelectedFolder(null);
-            } catch (error) {
-              console.error(error);
+            } catch (deleteFolderError) {
+              error(deleteFolderError);
             }
           }}
         >
@@ -356,49 +574,36 @@ function App() {
           type="text"
           value={searchQuery}
           onChange={event => {
-            void handleSearchChange(event);
+            setSearchQuery(event.target.value);
           }}
           placeholder="Search notes..."
-          style={{ width: '100%', marginBottom: '10px', boxSizing: 'border-box' }}
+          className="text-input mb-sm"
         />
-        <div>
-          {searchResults !== null
-            ? searchResults.map(note => (
-                <div
-                  key={note.path}
-                  onClick={() => void handleSelectNote(note.path)}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '6px 8px',
-                    backgroundColor: selectedNote === note.path ? '#e0e0e0' : 'transparent',
-                    borderRadius: '4px',
-                    marginBottom: '2px',
-                  }}
-                >
-                  {note.name}
-                </div>
-              ))
-            : tree.map(node => (
-                <TreeNode
-                  key={node.path}
-                  node={node}
-                  onSelect={handleSelectNote}
-                  onSelectFolder={handleSelectFolder}
-                  selectedPath={selectedNote}
-                  selectedFolderPath={selectedFolder}
-                  depth={0}
-                />
-              ))}
+        <div className="tree-container">
+          {!workspace ? (
+            <div className="empty-state compact">
+              <p>Select a workspace to begin.</p>
+            </div>
+          ) : searchResults !== null ? (
+            renderedSearchResults
+          ) : tree.length === 0 ? (
+            <div className="empty-state compact">
+              <p>No notes yet.</p>
+              <p>Create your first note.</p>
+            </div>
+          ) : (
+            renderedTree
+          )}
         </div>
       </div>
-      <div style={{ flex: 1, padding: '20px', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ fontSize: '14px', color: '#444' }}>
+      <div className="editor-pane">
+        <div className="editor-toolbar">
+          <div className="editor-title">
             {selectedNote
               ? `${selectedNote.split(/[\\/]/).pop() ?? selectedNote}${isDirty ? ' *' : ''}`
               : 'No note selected'}
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="inline-row">
             {selectedNote && (
               <button
                 onClick={() => {
@@ -430,8 +635,8 @@ function App() {
                   setIsDirty(false);
                   setIsRenaming(false);
                   setRenameValue('');
-                } catch (error) {
-                  console.error(error);
+                } catch (deleteNoteError) {
+                  error(deleteNoteError);
                 }
               }}
             >
@@ -446,11 +651,11 @@ function App() {
           </div>
         </div>
         {isRenaming && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <div className="inline-row mb-md">
             <input
               value={renameValue}
               onChange={event => setRenameValue(event.target.value)}
-              style={{ minWidth: '240px', boxSizing: 'border-box' }}
+              className="text-input rename-input"
             />
             <button
               onClick={async () => {
@@ -463,8 +668,8 @@ function App() {
                   setSelectedNote(newPath);
                   setIsRenaming(false);
                   setRenameValue('');
-                } catch (error) {
-                  console.error(error);
+                } catch (renameError) {
+                  error(renameError);
                 }
               }}
             >
@@ -480,30 +685,14 @@ function App() {
             </button>
           </div>
         )}
-        {isEditing ? (
-          <textarea
-            value={draftContent}
-            onChange={event => {
-              setDraftContent(event.target.value);
-              setIsDirty(event.target.value !== content);
-            }}
-            style={{
-              width: '100%',
-              minHeight: 'calc(100vh - 140px)',
-              resize: 'none',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              boxSizing: 'border-box',
-              padding: '12px',
-            }}
-          />
-        ) : (
-          <div
-            className="markdown-content"
-            style={{ padding: '16px' }}
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-          />
-        )}
+        <EditorContent
+          hasWorkspace={Boolean(workspace)}
+          selectedNote={selectedNote}
+          isEditing={isEditing}
+          content={content}
+          draftContent={draftContent}
+          onDraftChange={handleDraftChange}
+        />
       </div>
     </main>
   );
