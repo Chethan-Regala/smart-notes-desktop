@@ -103,6 +103,21 @@ body {
   margin-bottom: 8px;
 }
 
+.breadcrumb-link {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.breadcrumb-link:hover {
+  background: none;
+  color: var(--text-primary);
+}
+
 button {
   background-color: transparent;
   border: 1px solid var(--border-color);
@@ -171,6 +186,10 @@ button:disabled {
   font-weight: 600;
   padding: 4px 6px;
   margin-bottom: 2px;
+}
+
+.folder-item.root-folder {
+  font-weight: 700;
 }
 
 .folder-item:hover {

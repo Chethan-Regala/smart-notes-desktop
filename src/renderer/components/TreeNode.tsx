@@ -3,6 +3,7 @@ import type { FileNode } from '../../shared/types';
 
 type Props = {
   node: FileNode;
+  workspacePath: string;
   onSelect: (path: string) => void;
   onSelectFolder: (path: string) => void;
   onToggleFolder: (path: string) => void;
@@ -14,6 +15,7 @@ type Props = {
 
 const TreeNode = React.memo(function TreeNode({
   node,
+  workspacePath,
   onSelect,
   onSelectFolder,
   onToggleFolder,
@@ -23,22 +25,27 @@ const TreeNode = React.memo(function TreeNode({
   depth = 0,
 }: Props) {
   if (node.type === 'folder') {
-    const isExpanded = expandedFolders.has(node.path);
-    const isSelected = selectedFolderPath === node.path;
+    const isRoot = node.path === workspacePath;
+    const isExpanded = isRoot || expandedFolders.has(node.path);
+    const isSelected =
+      (isRoot && selectedFolderPath === null && selectedPath === null) ||
+      selectedFolderPath === node.path;
 
     return (
       <div>
         <div
           onClick={() => {
-            onToggleFolder(node.path);
+            if (!isRoot) {
+              onToggleFolder(node.path);
+            }
             onSelectFolder(node.path);
           }}
-          className={`folder-item${isSelected ? ' active' : ''}`}
+          className={`folder-item${isSelected ? ' active' : ''}${isRoot ? ' root-folder' : ''}`}
           style={{
             paddingLeft: `${depth * 16 + 6}px`,
           }}
         >
-          [{isExpanded ? '-' : '+'}] {node.name}
+          {isRoot ? '[Root]' : `[${isExpanded ? '-' : '+'}]`} {node.name}
         </div>
 
         {isExpanded &&
@@ -46,6 +53,7 @@ const TreeNode = React.memo(function TreeNode({
             <TreeNode
               key={child.path}
               node={child}
+              workspacePath={workspacePath}
               onSelect={onSelect}
               onSelectFolder={onSelectFolder}
               onToggleFolder={onToggleFolder}
@@ -77,6 +85,10 @@ function areEqual(previous: Props, next: Props): boolean {
     return false;
   }
 
+  if (previous.workspacePath !== next.workspacePath) {
+    return false;
+  }
+
   if (previous.depth !== next.depth) {
     return false;
   }
@@ -93,15 +105,27 @@ function areEqual(previous: Props, next: Props): boolean {
     return false;
   }
 
-  const previousIsExpanded = previous.expandedFolders.has(previous.node.path);
-  const nextIsExpanded = next.expandedFolders.has(next.node.path);
-  if (previousIsExpanded !== nextIsExpanded) {
-    return false;
-  }
-
   if (previous.node.type === 'folder') {
-    const previousIsSelected = previous.selectedFolderPath === previous.node.path;
-    const nextIsSelected = next.selectedFolderPath === next.node.path;
+    const previousIsRoot = previous.node.path === previous.workspacePath;
+    const nextIsRoot = next.node.path === next.workspacePath;
+    if (previousIsRoot !== nextIsRoot) {
+      return false;
+    }
+
+    if (!previousIsRoot) {
+      const previousIsExpanded = previous.expandedFolders.has(previous.node.path);
+      const nextIsExpanded = next.expandedFolders.has(next.node.path);
+      if (previousIsExpanded !== nextIsExpanded) {
+        return false;
+      }
+    }
+
+    const previousIsSelected = previousIsRoot
+      ? previous.selectedFolderPath === null && previous.selectedPath === null
+      : previous.selectedFolderPath === previous.node.path;
+    const nextIsSelected = nextIsRoot
+      ? next.selectedFolderPath === null && next.selectedPath === null
+      : next.selectedFolderPath === next.node.path;
     return previousIsSelected === nextIsSelected;
   }
 

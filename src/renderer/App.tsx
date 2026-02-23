@@ -289,7 +289,11 @@ function App() {
   }, []);
 
   const handleSelectFolder = useCallback((folderPath: string) => {
-    setSelectedFolder(folderPath);
+    if (workspace && folderPath === workspace) {
+      setSelectedFolder(null);
+    } else {
+      setSelectedFolder(folderPath);
+    }
     setSelectedNote(null);
     setContent('');
     setDraftContent('');
@@ -297,7 +301,7 @@ function App() {
     setIsDirty(false);
     setIsRenaming(false);
     setRenameValue('');
-  }, []);
+  }, [workspace]);
 
   const handleToggleFolder = useCallback((folderPath: string) => {
     setExpandedFolders(prev => {
@@ -359,6 +363,18 @@ function App() {
   const activeFolder = useMemo(() => getActiveFolder(), [getActiveFolder]);
   const breadcrumbPath =
     workspace && activeFolder ? formatFolderBreadcrumb(workspace, activeFolder) : '';
+  const rootNode = useMemo<FileNode | null>(() => {
+    if (!workspace) {
+      return null;
+    }
+
+    return {
+      name: 'Workspace',
+      path: workspace,
+      type: 'folder',
+      children: tree,
+    };
+  }, [tree, workspace]);
 
   const renderedSearchResults = useMemo(
     () => searchResults?.map(note => (
@@ -374,10 +390,11 @@ function App() {
   );
 
   const renderedTree = useMemo(
-    () => tree.map(node => (
+    () => (rootNode ? (
       <TreeNode
-        key={node.path}
-        node={node}
+        key={rootNode.path}
+        node={rootNode}
+        workspacePath={workspace ?? ''}
         onSelect={handleSelectNote}
         onSelectFolder={handleSelectFolder}
         onToggleFolder={handleToggleFolder}
@@ -386,15 +403,16 @@ function App() {
         selectedFolderPath={selectedFolder}
         depth={0}
       />
-    )),
+    ) : null),
     [
       expandedFolders,
       handleSelectFolder,
       handleSelectNote,
       handleToggleFolder,
+      rootNode,
       selectedFolder,
       selectedNote,
-      tree,
+      workspace,
     ],
   );
 
@@ -517,7 +535,22 @@ function App() {
           {workspace ?? 'No workspace selected'}
         </p>
         <div className="breadcrumb">
-          Workspace
+          <button
+            type="button"
+            className="breadcrumb-link"
+            onClick={() => {
+              setSelectedFolder(null);
+              setSelectedNote(null);
+              setContent('');
+              setDraftContent('');
+              setIsEditing(false);
+              setIsDirty(false);
+              setIsRenaming(false);
+              setRenameValue('');
+            }}
+          >
+            Workspace
+          </button>
           {workspace && activeFolder && breadcrumbPath && (
             <>
               {' > '}
@@ -525,51 +558,53 @@ function App() {
             </>
           )}
         </div>
-        <button
-          className="button-block mb-sm"
-          disabled={!workspace || !selectedFolder || selectedFolder === workspace}
-          onClick={async () => {
-            if (!workspace || !selectedFolder || selectedFolder === workspace) {
-              return;
-            }
-
-            const confirmed = window.confirm(
-              'Are you sure you want to delete this folder and all of its contents?',
-            );
-            if (!confirmed) {
-              return;
-            }
-
-            try {
-              await window.api.deleteFolder(selectedFolder);
-
-              if (selectedNote) {
-                const normalizePath = (value: string) => value.replace(/[\\/]+/g, '\\').toLowerCase();
-                const normalizedFolder = normalizePath(selectedFolder);
-                const normalizedSelectedNote = normalizePath(selectedNote);
-                const noteInsideFolder =
-                  normalizedSelectedNote === normalizedFolder ||
-                  normalizedSelectedNote.startsWith(`${normalizedFolder}\\`);
-
-                if (noteInsideFolder) {
-                  setSelectedNote(null);
-                  setContent('');
-                  setDraftContent('');
-                  setIsEditing(false);
-                  setIsDirty(false);
-                  setIsRenaming(false);
-                  setRenameValue('');
-                }
+        {selectedFolder && (
+          <button
+            className="button-block mb-sm"
+            disabled={!workspace}
+            onClick={async () => {
+              if (!workspace || !selectedFolder) {
+                return;
               }
 
-              setSelectedFolder(null);
-            } catch (deleteFolderError) {
-              error(deleteFolderError);
-            }
-          }}
-        >
-          Delete Folder
-        </button>
+              const confirmed = window.confirm(
+                'Are you sure you want to delete this folder and all of its contents?',
+              );
+              if (!confirmed) {
+                return;
+              }
+
+              try {
+                await window.api.deleteFolder(selectedFolder);
+
+                if (selectedNote) {
+                  const normalizePath = (value: string) => value.replace(/[\\/]+/g, '\\').toLowerCase();
+                  const normalizedFolder = normalizePath(selectedFolder);
+                  const normalizedSelectedNote = normalizePath(selectedNote);
+                  const noteInsideFolder =
+                    normalizedSelectedNote === normalizedFolder ||
+                    normalizedSelectedNote.startsWith(`${normalizedFolder}\\`);
+
+                  if (noteInsideFolder) {
+                    setSelectedNote(null);
+                    setContent('');
+                    setDraftContent('');
+                    setIsEditing(false);
+                    setIsDirty(false);
+                    setIsRenaming(false);
+                    setRenameValue('');
+                  }
+                }
+
+                setSelectedFolder(null);
+              } catch (deleteFolderError) {
+                error(deleteFolderError);
+              }
+            }}
+          >
+            Delete Folder
+          </button>
+        )}
         <input
           type="text"
           value={searchQuery}
@@ -586,11 +621,6 @@ function App() {
             </div>
           ) : searchResults !== null ? (
             renderedSearchResults
-          ) : tree.length === 0 ? (
-            <div className="empty-state compact">
-              <p>No notes yet.</p>
-              <p>Create your first note.</p>
-            </div>
           ) : (
             renderedTree
           )}
