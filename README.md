@@ -1,241 +1,180 @@
 # Smart Notes Desktop
 
-Smart Notes Desktop is a privacy-first, offline-capable knowledge management application built with Electron, React, and TypeScript.
+Smart Notes Desktop is an offline-first desktop notes application built with Electron, React, TypeScript, and Vite. It uses local Markdown files as the source of truth and is designed for people who want a lightweight, private workspace without relying on a cloud backend.
 
-The goal of this project is to provide a modular foundation for an AI-assisted personal knowledge system that runs fully on the user's machine. The architecture is designed to support local semantic search and Retrieval-Augmented Generation (RAG) pipelines without mandatory cloud dependencies.
+The project has moved beyond the initial scaffold stage and now includes a working desktop experience for selecting a workspace, browsing folders, creating and editing notes, searching across Markdown content, and automatically reacting to filesystem changes.
 
-This repository focuses on building the core foundation layer before introducing AI components.
+## Highlights
 
----
+- Offline-first local notes app
+- Markdown files stored directly in your own workspace folder
+- Folder tree with nested folders and notes
+- Create, rename, edit, save, and delete notes
+- Create and delete folders
+- Live workspace refresh with filesystem watching
+- Search across note names and note content
+- Markdown preview mode with plain-text editing mode
+- Saved workspace path between sessions
+- Secure Electron setup with `contextIsolation` and preload-based IPC
 
-## Vision
+## Current Product State
 
-Most modern knowledge tools depend heavily on cloud infrastructure. Smart Notes Desktop takes a different approach:
+The current version is a functional desktop knowledge workspace focused on solid local note management fundamentals.
 
-* Fully offline by default
-* Local markdown-based storage
-* Modular architecture for AI integration
-* Privacy-focused design
-* Swappable AI components
+What is implemented today:
 
-The AI layer is designed to sit on top of a stable local foundation, not replace it.
+- Workspace selection through a native folder picker
+- Persistent workspace restore on next launch
+- Recursive workspace tree generation for `.md` files and folders
+- Note reading and writing through Electron IPC
+- Folder and note creation inside the active workspace
+- Note renaming with workspace path validation
+- Note and folder deletion with safety checks
+- Debounced live refresh when files change on disk
+- Search by filename, basename, and note content
+- Light and dark UI modes
+- Keyboard save shortcut with `Ctrl+S` / `Cmd+S`
 
----
+What is not in the project yet:
 
-## Current Scope (Foundation Phase – 25%)
+- Rich text editor
+- Tags, backlinks, or graph view
+- Full-text indexing engine
+- AI, embeddings, vector search, or RAG workflows
+- Automated test suite
 
-This prototype focuses only on core infrastructure:
+## Tech Stack
 
-* Electron desktop setup
-* React + TypeScript renderer
-* Local workspace selection
-* Markdown file-based storage
-* Folder watcher for real-time updates
-* Sidebar note listing
-* Clean modular architecture
-* AI module placeholder (not yet implemented)
+- Electron 40
+- React 19
+- TypeScript 5
+- Vite 7
+- Electron Forge
+- `chokidar` for workspace watching
+- `electron-store` for local app persistence
+- `markdown-it` for Markdown rendering
 
-No LLM, embeddings, or vector database are included in this phase.
+## How It Works
 
----
+Smart Notes Desktop treats a user-selected local folder as the workspace root.
 
-## Architecture Overview
+Inside that workspace:
 
-The system is structured to maintain strict separation of concerns:
+- folders are displayed as a recursive tree
+- Markdown files are treated as notes
+- note content is read directly from disk
+- edits are written back to the same file
+- external filesystem changes trigger a UI refresh
 
-* Main Process
-  Handles Electron lifecycle, filesystem access, and IPC communication.
+The main process owns filesystem access and exposes a narrow IPC API through the preload script. The renderer stays focused on the UI, state management, search interactions, and Markdown viewing/editing.
 
-* Renderer
-  React-based UI layer responsible for workspace navigation and editor integration.
+## Architecture
 
-* Modules
-  Encapsulated business logic organized by domain:
-
-  * notes
-  * storage
-  * editor
-  * search
-  * ai (future layer)
-
-* Shared
-  Common types and utilities used across modules.
-
-The AI layer will later integrate with:
-
-* Local embedding models (Transformers.js)
-* Local LLM backends (Ollama or llama.cpp)
-* Hybrid retrieval pipeline
-
-The foundation is intentionally lightweight and server-free.
-
----
-
-## Technology Stack
-
-Core technologies:
-
-* Electron
-* React
-* TypeScript
-* Vite
-
-Planned AI Layer:
-
-* Transformers.js (local embeddings)
-* Ollama (local LLM inference)
-* Hybrid retrieval (keyword + semantic search)
-
-All AI components will be optional and modular.
-
----
-
-## Design Principles
-
-* Offline-first architecture
-* No mandatory cloud calls
-* Local markdown as source of truth
-* Scalable for large note collections
-* Modular AI integration
-* Desktop-native experience
-* Performance-aware design
-
-This project avoids heavy server-based systems and prioritizes local computation.
-
----
-
-## Project Structure
-
-```
+```text
 src/
- ├── main/
- ├── renderer/
- ├── modules/
- │     ├── notes/
- │     ├── storage/
- │     ├── editor/
- │     ├── search/
- │     └── ai/
- ├── shared/
- │     ├── types/
- │     └── utils/
+|-- main/
+|   `-- main.ts              # Electron window lifecycle and IPC handlers
+|-- modules/
+|   `-- storage/
+|       |-- notes.ts         # Workspace tree, note CRUD, search, folder CRUD
+|       |-- watcher.ts       # Chokidar-based workspace watcher
+|       `-- workspace.ts     # Workspace validation
+|-- renderer/
+|   |-- App.tsx              # Main desktop UI and app state
+|   |-- components/
+|   |   `-- TreeNode.tsx     # Recursive workspace tree renderer
+|   `-- utils/
+|       |-- markdown.ts      # Markdown rendering
+|       `-- logger.ts        # Development logging helpers
+|-- shared/
+|   `-- types.ts             # Shared file tree and search result types
+`-- preload.ts               # Secure renderer API bridge
 ```
 
-This structure ensures long-term maintainability and future extensibility.
+### Main process responsibilities
 
----
----
+- manage the Electron app lifecycle
+- open the native workspace picker
+- validate workspace access
+- handle note and folder IPC operations
+- persist the last selected workspace
+- broadcast workspace change events
 
-## Architecture Diagram
+### Renderer responsibilities
 
-                        ┌──────────────────────────┐
-                        │        Electron          │
-                        │      (Main Process)      │
-                        │--------------------------│
-                        │ • App lifecycle          │
-                        │ • Native menus           │
-                        │ • File system access     │
-                        │ • IPC bridge             │
-                        └─────────────┬────────────┘
-                                      │ IPC
-                                      ▼
-                        ┌──────────────────────────┐
-                        │        Renderer          │
-                        │    (React + TypeScript)  │
-                        │--------------------------│
-                        │ • Sidebar (notes list)   │
-                        │ • Editor (TipTap)        │
-                        │ • Search UI              │
-                        └─────────────┬────────────┘
-                                      │
-                 ┌────────────────────┴────────────────────┐
-                 │               Modules                   │
-                 │-----------------------------------------│
-                 │ notes     → note management logic       │
-                 │ storage   → local markdown handling     │
-                 │ search    → keyword + hybrid retrieval  │
-                 │ editor    → editor integration          │
-                 │ ai        → future AI layer (modular)   │
-                 └────────────────────┬────────────────────┘
-                                      │
-                                      ▼
-                        ┌──────────────────────────┐
-                        │     Local File System    │
-                        │--------------------------│
-                        │ • Markdown files (.md)   │
-                        │ • Metadata (SQLite)      │
-                        └──────────────────────────┘
+- render the sidebar and editor UI
+- manage selected workspace, note, folder, and draft state
+- perform search interactions
+- handle edit/save/rename/delete flows
+- switch between preview and editing modes
 
+## Security and File Safety
 
-Future AI Extension Layer (Planned)
+The app already includes a few important safety measures:
 
-        ┌────────────────────────────────────────────┐
-        │            AI Services Layer               │
-        │--------------------------------------------│
-        │ Chunking → Embeddings → Vector Store       │
-        │ Hybrid Retrieval (Keyword + Semantic)      │
-        │ Ollama (Local LLM for RAG)                 │
-        └────────────────────────────────────────────┘
+- renderer code does not get direct Node.js access
+- `contextIsolation` is enabled
+- all filesystem access goes through preload-exposed IPC handlers
+- note writes, renames, creates, and deletes are validated against the active workspace
+- only Markdown files are treated as editable notes
+- hidden files and folders are ignored in the tree and watcher
 
-**Note** 
-- The architecture enforces a strict separation between application shell, UI, domain logic, and future AI services.
-- The AI layer is designed as an optional extension that consumes indexed local data without altering the core storage system.
+## Development
 
----
+### Prerequisites
 
-## Roadmap
+- Node.js 20 or newer is recommended
+- npm
 
-Phase 1 – Foundation (Current)
+### Install dependencies
 
-* Workspace system
-* Markdown loading
-* Folder watching
-* Editor integration
-* Basic keyword search
-
-Phase 2 – Semantic Layer
-
-* Chunking strategy
-* Embedding pipeline
-* Vector indexing
-* Hybrid retrieval
-
-Phase 3 – Local RAG
-
-* Ollama integration
-* Context-aware answers
-* Citation support
-
-Phase 4 – Knowledge Intelligence
-
-* Auto-link suggestions
-* Knowledge graph exploration
-* Smart context sidebar
-
----
-
-## Development Setup
-
-Install dependencies:
-
-```
+```bash
 npm install
 ```
 
-Run development build:
+### Start the desktop app in development
 
-```
+```bash
 npm start
 ```
 
-The application launches as a local Electron desktop app.
+### Lint the codebase
 
----
+```bash
+npm run lint
+```
 
-## Status
+### Package the application
 
-This is an early-stage architectural prototype focused on building a strong local-first foundation before introducing AI features.
+```bash
+npm run package
+```
 
-The design prioritizes clean structure, modularity, and long-term scalability.
+### Build distributables
 
----
+```bash
+npm run make
+```
+
+## Packaging
+
+The project uses Electron Forge with Vite and is configured for:
+
+- Windows via Squirrel
+- macOS via ZIP
+- Linux via Deb and RPM
+
+Electron fuses are also configured to reduce unnecessary runtime surface area in packaged builds.
+
+## Project Direction
+
+The current milestone is a clean, reliable local notes foundation. The next logical improvements are:
+
+1. Better editor ergonomics and note metadata
+2. More capable search and navigation
+3. Quality improvements such as tests and error-state polish
+4. Optional local AI features on top of the existing Markdown workspace model
+
+## License
+
+MIT
