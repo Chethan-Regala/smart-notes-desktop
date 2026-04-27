@@ -1,5 +1,7 @@
 import { watch, FSWatcher } from 'chokidar';
 import fs from 'fs';
+import path from 'path';
+import { processFileForIndexing } from '../ai/indexing/indexingService';
 
 let watcher: FSWatcher | null = null;
 let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -53,6 +55,22 @@ export async function startWorkspaceWatcher(
       stabilityThreshold: 100,
       pollInterval: 100,
     },
+  });
+
+  const onFileChange = (filePath: string): void => {
+    if (path.extname(filePath).toLowerCase() !== '.md') {
+      return;
+    }
+
+    processFileForIndexing(filePath);
+  };
+
+  watcher.on('add', filePath => {
+    onFileChange(filePath);
+  });
+
+  watcher.on('change', filePath => {
+    onFileChange(filePath);
   });
 
   watcher.on('all', () => {

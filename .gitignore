@@ -92,3 +92,8 @@ typings/
 
 # Electron-Forge
 out/
+
+# Local AI sqlite artifacts
+smart-notes.db
+smart-notes.db-shm
+smart-notes.db-wal

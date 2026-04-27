@@ -15,6 +15,7 @@ import {
 } from '../modules/storage/notes';
 import { isValidWorkspace } from '../modules/storage/workspace';
 import { startWorkspaceWatcher, stopWorkspaceWatcher } from '../modules/storage/watcher';
+import { initAI } from '../modules/ai';
 
 type StoreSchema = {
   workspacePath: string | null;
@@ -208,10 +209,10 @@ const createWindow = () => {
   });
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
+app.whenReady().then(() => {
+  initAI();
+  createWindow();
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
